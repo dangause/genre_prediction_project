@@ -1,0 +1,103 @@
+---
+title: "Using a kNN Algorithm to Predict Song Genres"
+author: "Drew Martinson, Jacob Shashoua, Dan Gause"
+date: "2/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(class)
+songs <- read.csv("top50.csv", stringsAsFactors = FALSE)
+
+genres <- songs$Genre
+new <- NULL
+index <- 1
+for (g in genres){
+  if(str_detect(g, "pop")){
+    new[index] <- "pop"
+    index <- index + 1
+  } else if(str_detect(g, "rap") || str_detect(g, "hip")){
+    new[index] <- "rap"
+    index <- index + 1
+  } else if (str_detect(g, "reggaeton")){
+    new[index] <- "reggaeton"
+    index <- index + 1
+  }
+  else {
+    new[index] <- g
+    index <- index + 1
+  }
+}
+songs$Genre <- new
+```
+
+We chose to use the data set Top 50 Spotify Songs - 2019 from Kaggle, a data set that includes a variety of musical variables such as genre, dancibility, beats per minute, and energy for each of the 50 most popular Spotify songs of 2019. We wanted to use the kNN algorithm to determine which variables best predicted the musical genre. After uploading the data set, we collapsed similar genres such as "dance pop", "australian pop", and "electropop" into broader genres, such as "pop". This significantly simplified the dataset. We then wrote a kNN script, and selected multiple combinations of variables to determine which best predicted genre. 
+```{r}
+prediction <- NULL
+knn.accuracy <- NULL
+for (k in 1:49) {
+  for(i in 1:nrow(songs)){
+    train <- songs[-i,5:6] # 5:6 -> Energy, BPM 
+    test <- songs[i,5:6]
+    
+    prediction[i] <- toString(knn(train, test, songs$Genre[-i], k))
+  }
+  #calulate the accuracy of knn for given k value
+  knn.accuracy[k] <- sum(prediction == songs$Genre)
+}
+
+print(knn.accuracy)
+```
+From the output of this LOOCV method, we determined that 15 was our ideal value for k because after this index in the array the prediction values were all equivalent at 23. This output shows how as k incremented, it eventually reached the value that corresponded to the most Genres observed in these data: Pop(23). We chose to graphically investigate this case when k=15, but also when k=1 to observe if there was any interesting pattern compared to our optimal value for k.
+```{r}
+knn1 <- function(test.bpm, test.eng, k){
+  res <- songs %>%
+    mutate(distance = sqrt((test.bpm-Beats.Per.Minute)^2 + 
+                             (test.eng-Energy)^2)) %>%
+    arrange(distance) %>%
+    head(k) %>%
+    select(Genre)
+  
+  tabled.max <- which.max(table(res))
+  index <- tabled.max[[1]]
+  return(res[index,])
+}
+
+bpm.grid <- seq(from=70, to=190, by=2)
+eng.grid <- seq(from=25, to=90, by=2)
+
+grid <- expand.grid(bpm.grid, eng.grid)
+
+# k=1
+knn.k1 <- grid %>%
+  group_by(Var1, Var2) %>%
+  mutate(prediction=knn1(Var1, Var2, 1))
+
+# k=15
+knn.k15 <- grid %>%
+  group_by(Var1, Var2) %>%
+  mutate(prediction=knn1(Var1, Var2, 15))
+
+# Graph when k=1
+knn.k1 %>%
+  ggplot(aes(x=Var1, y=Var2)) +
+  geom_point(aes(color=factor(prediction)), size=2, alpha=0.25) +
+  geom_point(data=songs, aes(x=Beats.Per.Minute, y=Energy, color=Genre, size=3)) +
+  labs(x = "BPM", y = "Energy", title = "Genre Surfaces of Filtered Song Data with K = 1")
+
+# Graph when k=15
+knn.k15 %>%
+  ggplot(aes(x=Var1, y=Var2)) +
+  geom_point(aes(color=factor(prediction)), size=2, alpha=0.25) +
+  geom_point(data=songs, aes(x=Beats.Per.Minute, y=Energy, color=Genre, size=3)) +
+  labs(x = "BPM", y = "Energy", title = "Genre Surfaces of Filtered Song Data with K = 15")
+```
+
+Based on these graphs, we see that the value of k does not really play a significant role in determining the Genre of music given the Energy and BPM of a song.
+
+We found that the kNN algorithm was an ineffective technique for our dataset. There was significant variation in all musical variables across each genre, so the kNN algorithm ended up almost always choosing the most popular genre, "pop", for all k values. We tried to avoid this problem by removing all "pop" songs from our data set, but this only made the kNN algorithm rely on the SECOND most popular genre, "rap". We do not believe that some other algorithmic technique, such as linear regression, would have significantly improved our prediction. Instead, we believe that there is little correlation between musical elements and musical genre in our data set, making it unfit for any effective prediction algorithm. 
+
+We also observed little correlation between predictive ability and k-values, which supports our conclusion that our data set in unfit for kNN analysis.
+
